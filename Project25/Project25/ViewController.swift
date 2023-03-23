@@ -21,8 +21,13 @@ class ViewController: UICollectionViewController, UIImagePickerControllerDelegat
         super.viewDidLoad()
         
         title = "Selfie Share"
-        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .camera, target: self, action: #selector(importPicture))
-        navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(showConnectionPrompt))
+        let connectionButton = UIBarButtonItem(barButtonSystemItem: .add, target: self, action: #selector(showConnectionPrompt))
+        let showConnectionsButton = UIBarButtonItem(title: "Connections", style: .plain, target: self, action: #selector(showConnections))
+        let importPictureButton = UIBarButtonItem(barButtonSystemItem: .camera, target: self, action: #selector(importPicture))
+        let shareMessageButton = UIBarButtonItem(barButtonSystemItem: .compose, target: self, action: #selector(sendMessage))
+        navigationItem.rightBarButtonItems = [shareMessageButton, importPictureButton]
+            
+        navigationItem.leftBarButtonItems = [connectionButton, showConnectionsButton]
        
         mcSession = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
         mcSession?.delegate = self
@@ -66,20 +71,56 @@ class ViewController: UICollectionViewController, UIImagePickerControllerDelegat
         images.insert(image, at: 0)
         collectionView.reloadData()
         
-        guard let mcSession = mcSession else { return }
-
-        if mcSession.connectedPeers.count > 0 {
-            if let imageData = image.pngData() {
-                do {
-                    try mcSession.send(imageData, toPeers: mcSession.connectedPeers, with: .reliable)
-                } catch {
-                    let ac = UIAlertController(title: "Send error", message: error.localizedDescription, preferredStyle: .alert)
-                    ac.addAction(UIAlertAction(title: "OK", style: .default))
-                    present(ac, animated: true)
+        if let imageData = image.pngData() {
+                    shareData(data: imageData)
                 }
+
+            }
+
+            
+            @objc func sendMessage() {
+                let ac = UIAlertController(title: "Enter message", message: nil, preferredStyle: .alert)
+                ac.addTextField()
+
+                ac.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                ac.addAction(UIAlertAction(title: "Share", style: .default, handler: { [weak self, weak ac] _ in
+                    if let message = ac?.textFields?[0].text {
+                        let data = Data(message.utf8)
+                        self?.shareData(data: data)
+                    }
+                }))
+                present(ac, animated: true)
+            }
+
+        
+    func shareData(data: Data) {
+             guard let mcSession = mcSession else { return }
+
+             if mcSession.connectedPeers.count > 0 {
+                     do {
+                         try mcSession.send(data, toPeers: mcSession.connectedPeers, with: .reliable)
+                     } catch {
+                         let ac = UIAlertController(title: "Send error", message: error.localizedDescription, preferredStyle: .alert)
+                         ac.addAction(UIAlertAction(title: "OK", style: .default))
+                         present(ac, animated: true)
+                 }
+             }
+         }
+    
+    @objc func showConnections() {
+
+            var peersArray: String = "No connections"
+
+            if let mcSession = mcSession {
+                if !mcSession.connectedPeers.isEmpty {
+                    peersArray = mcSession.connectedPeers.map {$0.displayName}.joined(separator: "\n")
+                }
+                let ac = UIAlertController(title: "Connected peers", message: peersArray, preferredStyle: .actionSheet)
+                ac.popoverPresentationController?.barButtonItem = navigationItem.leftBarButtonItems?[1]
+                ac.addAction(UIAlertAction(title: "OK", style: .default))
+                present(ac, animated: true)
             }
         }
-    }
     
     func startHosting(action: UIAlertAction) {
         guard let mcSession = mcSession else { return }
@@ -123,7 +164,9 @@ class ViewController: UICollectionViewController, UIImagePickerControllerDelegat
             print("Connecting: \(peerID.displayName)")
 
         case .notConnected:
-            print("Not Connected: \(peerID.displayName)")
+            let ac = UIAlertController(title: "Disconnection", message: "\n No longer connected \(peerID.displayName)", preferredStyle: .alert)
+             ac.addAction(UIAlertAction(title: "OK", style: .default))
+             present(ac, animated: true)
 
         @unknown default:
             print("Unknown state received: \(peerID.displayName)")
